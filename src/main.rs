@@ -7,6 +7,5 @@ fn main() {
     pretty_env_logger::formatted_builder().filter_level(log::LevelFilter::Info).init();
     log::info!("log initialized");
 
-    let mut app = App::new();
-    app.run();
+    App::new().run();
 }
