@@ -12,6 +12,7 @@ use crate::config::Config;
 
 mod monitor_folders;
 mod handle_files;
+mod monitor_config;
 
 struct MovingInfo {
     pub timeout: Duration,
@@ -26,32 +27,28 @@ pub struct App {
 
 impl App {
     pub fn new() -> App {
-        let config = match confy::load("file_janitor", Some("config")) {
-            Ok(config) => config,
-            Err(err) => panic!("Unable to load configuration: {err:#?}"),
-        };
-
         App {
-            config: Arc::new(Mutex::new(config)),
+            config: Arc::new(Mutex::new(Config::default().init())),
         }
     }
 
     pub fn run(&mut self) {
-        let (sender, receiver) = mpsc::channel::<PathBuf>();
+        let (tx_new_file_event, rx_new_file_event) = mpsc::channel::<PathBuf>();
+        let (tx_config_updated, rx_config_updated) = mpsc::channel::<()>();
 
         let config = self.config.clone();
         let monitor_config_thread = thread::spawn(|| {
-
+            App::monitor_config(config, tx_config_updated);
         });
 
         let config = self.config.clone();
         let monitor_folders_thread = thread::spawn(|| {
-            App::monitor_folders(config, sender);
+            App::monitor_folders(config, tx_new_file_event, rx_config_updated);
         });
 
         let config = self.config.clone();
         let handle_files_thread = thread::spawn(|| {
-            App::handle_files(config, receiver);
+            App::handle_files(config, rx_new_file_event);
         });
 
         monitor_config_thread.join().unwrap();

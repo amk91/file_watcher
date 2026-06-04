@@ -1,6 +1,17 @@
 use std::time::Duration;
 
+use log::error;
 use serde::{Deserialize, Serialize};
+
+pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
+pub const CONFIG_NAME: &str = "config";
+
+#[derive(Serialize, Deserialize, Debug, Default)]
+pub struct FolderMonitor {
+    pub extension: String,
+    pub source_folder: String,
+    pub destination_folder: String,
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Config {
@@ -10,13 +21,6 @@ pub struct Config {
     pub check_interval: Duration,
     pub file_timeout: Duration,
     pub thread_sleep: Duration,
-}
-
-#[derive(Serialize, Deserialize, Debug, Default)]
-pub struct FolderMonitor {
-    pub extension: String,
-    pub source_folder: String,
-    pub destination_folder: String,
 }
 
 impl ::std::default::Default for Config {
@@ -29,5 +33,18 @@ impl ::std::default::Default for Config {
             file_timeout: Duration::from_millis(5000),
             thread_sleep: Duration::from_millis(100),
         }
+    }
+}
+
+impl Config {
+    pub fn init(mut self) -> Self {
+        match confy::load::<Config>(APP_NAME, Some(CONFIG_NAME)) {
+            Ok(new_config) => self = new_config,
+            Err(err) => error!(
+                "Unable to load configuration, backtrack to use previous or default config, {err:#?}"
+            ),
+        }
+
+        self
     }
 }

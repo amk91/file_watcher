@@ -2,11 +2,12 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
-        mpsc::{self, Sender},
+        mpsc::{self, Receiver, Sender},
     },
+    thread,
+    time::Duration,
 };
 
-use anyhow::anyhow;
 use log::{error, warn};
 use notify::{Event, EventKind, INotifyWatcher, RecursiveMode, Watcher, event::CreateKind};
 
@@ -31,44 +32,27 @@ impl App {
         })
     }
 
-    fn setup_folders(
-        source_folder: &String,
-        destination_folder: &String,
-    ) -> Result<(), anyhow::Error> {
-        // Do not add a watcher for a source folder that does not exist
-        if let Ok(false) | Err(_) = std::fs::exists(source_folder) {
-            return Err(anyhow!(format!(
-                "Source folder {source_folder} does not exist"
-            )));
-        }
-
-        // Create destination folder if it does not exist
-        if let Ok(false) | Err(_) = std::fs::exists(destination_folder) {
-            if let Err(err) = std::fs::create_dir_all(destination_folder) {
-                return Err(anyhow!(format!(
-                    "Unable to create folder {destination_folder}: {err:#?}"
-                )));
-            }
-        }
-
-        Ok(())
-    }
-
-    pub fn monitor_folders(config: Arc<Mutex<Config>>, sender: Sender<PathBuf>) {
-        let (tx, rx) = mpsc::channel::<PathBuf>();
-        let mut watcher = match App::setup_watcher(tx) {
-            Ok(watcher) => watcher,
-            Err(err) => panic!("Unable to generate watcher: {err:#?}"),
-        };
-
+    fn setup_folders(config: &Arc<Mutex<Config>>, watcher: &mut INotifyWatcher, watched_folders: &mut Vec<PathBuf>) {
         if let Ok(config) = config.lock() {
             for folder_monitor in config.folder_monitors.iter().by_ref() {
-                if let Err(err) = App::setup_folders(
-                    &folder_monitor.source_folder,
-                    &folder_monitor.destination_folder,
-                ) {
-                    warn!("Unable to set up folder's monitor: {err:#?}");
+                // Do not add a watcher for a source folder that does not exist
+                if let Ok(false) | Err(_) = std::fs::exists(&folder_monitor.source_folder) {
+                    warn!(
+                        "Source folder {} does not exist",
+                        folder_monitor.source_folder
+                    );
                     continue;
+                }
+
+                // Create destination folder if it does not exist
+                if let Ok(false) | Err(_) = std::fs::exists(&folder_monitor.destination_folder) {
+                    if let Err(err) = std::fs::create_dir_all(&folder_monitor.destination_folder) {
+                        warn!(
+                            "Unable to create folder {}: {err:?}",
+                            folder_monitor.destination_folder
+                        );
+                        continue;
+                    }
                 }
 
                 if let Err(err) = watcher.watch(
@@ -76,17 +60,56 @@ impl App {
                     RecursiveMode::NonRecursive,
                 ) {
                     error!(
-                        "Unable to watch folder {}: {err:#?}",
-                        folder_monitor.source_folder,
+                        "Unable to watch folder {}: {err:?}",
+                        folder_monitor.source_folder
                     );
+                } else {
+                    watched_folders.push(PathBuf::from(folder_monitor.source_folder.clone()));
                 }
             }
         }
+    }
 
-        for filename in rx {
-            if let Err(err) = sender.send(filename) {
-                error!("Unable to send filename over: {err:#?}");
+    fn free_watchers(watched_folders: &mut Vec<PathBuf>, watcher: &mut INotifyWatcher) {
+        for folder in watched_folders.iter() {
+            if let Err(err) = watcher.unwatch(folder) {
+                warn!(
+                    "Unable to unwatch folder {}: {err:?}",
+                    folder.display()
+                );
             }
+        }
+
+        watched_folders.clear();
+    }
+
+    pub fn monitor_folders(
+        config: Arc<Mutex<Config>>,
+        tx_new_file_event: Sender<PathBuf>,
+        rx_config_updated: Receiver<()>,
+    ) {
+        let (tx, rx) = mpsc::channel::<PathBuf>();
+        let mut watcher = match App::setup_watcher(tx) {
+            Ok(watcher) => watcher,
+            Err(err) => panic!("Unable to generate watcher: {err:#?}"),
+        };
+
+        let mut watched_folders = vec![];
+        App::setup_folders(&config, &mut watcher, &mut watched_folders);
+
+        loop {
+            if let Ok(filename) = rx.try_recv() {
+                if let Err(err) = tx_new_file_event.send(filename) {
+                    error!("Unable to send filename over: {err:#?}");
+                }
+            }
+
+            if let Ok(_) = rx_config_updated.try_recv() {
+                App::free_watchers(&mut watched_folders, &mut watcher);
+                App::setup_folders(&config, &mut watcher, &mut watched_folders);
+            }
+
+            thread::sleep(Duration::from_millis(100));
         }
     }
 }
