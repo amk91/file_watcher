@@ -8,12 +8,13 @@ use std::{
     time::Duration,
 };
 
-use log::{error, warn};
 use notify::{Event, EventKind, INotifyWatcher, RecursiveMode, Watcher, event::CreateKind};
+use tracing::{error, warn};
 
 use crate::{app::App, config::Config};
 
 impl App {
+    #[tracing::instrument]
     fn setup_watcher(sender: Sender<PathBuf>) -> notify::Result<INotifyWatcher> {
         notify::recommended_watcher(move |event: notify::Result<Event>| {
             if let Ok(event) = event {
@@ -22,7 +23,8 @@ impl App {
                     if let Some(filename) = path.file_name() {
                         if let Err(err) = sender.send(filename.into()) {
                             error!(
-                                "Error sending event for file {}: {err:#?}",
+                                ?err,
+                                "Error sending event for file {}",
                                 filename.display()
                             );
                         }
@@ -32,6 +34,7 @@ impl App {
         })
     }
 
+    #[tracing::instrument]
     fn setup_folders(config: &Arc<Mutex<Config>>, watcher: &mut INotifyWatcher, watched_folders: &mut Vec<PathBuf>) {
         if let Ok(config) = config.lock() {
             for folder_monitor in config.folder_monitors.iter().by_ref() {
@@ -60,7 +63,8 @@ impl App {
                     RecursiveMode::NonRecursive,
                 ) {
                     error!(
-                        "Unable to watch folder {}: {err:?}",
+                        ?err,
+                        "Unable to watch folder {}",
                         folder_monitor.source_folder
                     );
                 } else {
@@ -70,11 +74,13 @@ impl App {
         }
     }
 
+    #[tracing::instrument]
     fn free_watchers(watched_folders: &mut Vec<PathBuf>, watcher: &mut INotifyWatcher) {
         for folder in watched_folders.iter() {
             if let Err(err) = watcher.unwatch(folder) {
                 warn!(
-                    "Unable to unwatch folder {}: {err:?}",
+                    ?err,
+                    "Unable to unwatch folder {}",
                     folder.display()
                 );
             }
@@ -83,6 +89,7 @@ impl App {
         watched_folders.clear();
     }
 
+    #[tracing::instrument]
     pub fn monitor_folders(
         config: Arc<Mutex<Config>>,
         tx_new_file_event: Sender<PathBuf>,
@@ -100,7 +107,7 @@ impl App {
         loop {
             if let Ok(filename) = rx.try_recv() {
                 if let Err(err) = tx_new_file_event.send(filename) {
-                    error!("Unable to send filename over: {err:#?}");
+                    error!(?err, "Unable to send filename over");
                 }
             }
 

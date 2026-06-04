@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use log::error;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 pub const CONFIG_NAME: &str = "config";
@@ -41,7 +41,8 @@ impl Config {
         match confy::load::<Config>(APP_NAME, Some(CONFIG_NAME)) {
             Ok(new_config) => self = new_config,
             Err(err) => error!(
-                "Unable to load configuration, backtrack to use previous or default config, {err:#?}"
+                ?err,
+                "Unable to load configuration, backtrack to use previous or default config"
             ),
         }
 
