@@ -1,5 +1,5 @@
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         mpsc::{self, Sender},
@@ -14,7 +14,7 @@ use tracing::{error, trace};
 
 use crate::{
     app::App,
-    config::{APP_NAME, CONFIG_NAME, Config},
+    config::Config,
 };
 
 impl App {
@@ -31,17 +31,11 @@ impl App {
         })
     }
 
-    #[tracing::instrument]
-    pub fn monitor_config(config: Arc<Mutex<Config>>, tx_config_updated: Sender<()>) {
+    pub fn monitor_config(config: Arc<Mutex<Config>>, config_path: PathBuf, tx_config_updated: Sender<()>) {
         let (sender, receiver) = mpsc::channel();
         let mut watcher = match App::setup_config_watcher(sender) {
             Ok(watcher) => watcher,
             Err(err) => panic!("Unable to generate watcher for config: {err:?}"),
-        };
-
-        let config_path = match confy::get_configuration_file_path(APP_NAME, CONFIG_NAME) {
-            Ok(config_path) => config_path,
-            Err(err) => panic!("Unable to retrieve configuration filepath: {err:?}"),
         };
 
         if let Err(err) = watcher.watch(Path::new(&config_path), RecursiveMode::NonRecursive) {
@@ -50,7 +44,7 @@ impl App {
 
         for _ in receiver {
             match config.lock() {
-                Ok(mut config) => match confy::load::<Config>(APP_NAME, Some(CONFIG_NAME)) {
+                Ok(mut config) => match confy::load_path::<Config>(&config_path) {
                     Ok(config_updated) => {
                         *config = config_updated;
                         trace!(?config, "Configuration updated");
@@ -60,7 +54,9 @@ impl App {
                 Err(err) => error!(?err, "Unable to lock config"),
             }
 
-            tx_config_updated.send(()).unwrap();
+            if let Err(err) = tx_config_updated.send(()) {
+                error!(?err, "Unable to send notification of configuration update");
+            }
         }
     }
 }

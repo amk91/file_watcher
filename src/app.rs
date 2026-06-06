@@ -8,9 +8,11 @@ use std::{
     time::Duration,
 };
 
-use tracing::trace;
+use tracing::{info, trace};
 
-use crate::config::Config;
+use directories::ProjectDirs;
+
+use crate::config::{Config, CONFIG_NAME};
 
 mod monitor_folders;
 mod handle_files;
@@ -24,28 +26,53 @@ struct MovingInfo {
     pub destination_folder: String,
 }
 
+pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
+
+#[derive(Debug)]
+struct AppPaths {
+    _data_dir: PathBuf,
+    _config_dir: PathBuf,
+    config_path: PathBuf,
+}
+
+impl AppPaths {
+    pub fn new(data_dir: PathBuf, config_dir: PathBuf) -> Self {
+        Self {
+            _data_dir: data_dir,
+            _config_dir: config_dir.clone(),
+            config_path: PathBuf::from(config_dir).join(CONFIG_NAME)
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct App {
     config: Arc<Mutex<Config>>,
+    app_paths: AppPaths,
 }
 
 impl App {
-    #[tracing::instrument]
     pub fn new() -> App {
+        let (data_dir, config_dir) = match ProjectDirs::from("", "amk319", APP_NAME) {
+            Some(proj_dirs) => (PathBuf::from(&proj_dirs.data_dir()), PathBuf::from(&proj_dirs.config_dir())),
+            None => panic!("Unable to retrieve projects folders, unable to continue"),
+        };
+
         App {
-            config: Arc::new(Mutex::new(Config::default().init())),
+            config: Arc::new(Mutex::new(Config::default().init(config_dir.clone()))),
+            app_paths: AppPaths::new(data_dir, config_dir),
         }
     }
 
-    #[tracing::instrument]
     pub fn run(&mut self) {
         let (tx_new_file_event, rx_new_file_event) = mpsc::channel::<PathBuf>();
         let (tx_config_updated, rx_config_updated) = mpsc::channel::<()>();
 
         trace!("Spawning configuration monitor thread");
         let config = self.config.clone();
+        let config_path = self.app_paths.config_path.clone();
         let monitor_config_thread = thread::spawn(|| {
-            App::monitor_config(config, tx_config_updated);
+            App::monitor_config(config, config_path, tx_config_updated);
         });
 
         trace!("Spawning folders monitor thread");

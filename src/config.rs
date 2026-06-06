@@ -1,10 +1,9 @@
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
-pub const CONFIG_NAME: &str = "config";
+pub const CONFIG_NAME: &str = "config.toml";
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 pub struct FolderMonitor {
@@ -37,13 +36,13 @@ impl ::std::default::Default for Config {
 }
 
 impl Config {
-    pub fn init(mut self) -> Self {
-        match confy::load::<Config>(APP_NAME, Some(CONFIG_NAME)) {
+    pub fn init(mut self, config_path: PathBuf) -> Self {
+        match confy::load_path::<Config>(config_path) {
             Ok(new_config) => self = new_config,
             Err(err) => error!(
                 ?err,
                 "Unable to load configuration, backtrack to use previous or default config"
-            ),
+            )
         }
 
         self

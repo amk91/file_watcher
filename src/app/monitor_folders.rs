@@ -34,7 +34,6 @@ impl App {
         })
     }
 
-    #[tracing::instrument]
     fn setup_folders(config: &Arc<Mutex<Config>>, watcher: &mut INotifyWatcher, watched_folders: &mut Vec<PathBuf>) {
         if let Ok(config) = config.lock() {
             for folder_monitor in config.folder_monitors.iter().by_ref() {
@@ -89,7 +88,6 @@ impl App {
         watched_folders.clear();
     }
 
-    #[tracing::instrument]
     pub fn monitor_folders(
         config: Arc<Mutex<Config>>,
         tx_new_file_event: Sender<PathBuf>,

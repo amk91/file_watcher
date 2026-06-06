@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use log::{info, warn};
+use tracing::{info, warn};
 
 use crate::{
     app::{App, MovingInfo},
