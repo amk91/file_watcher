@@ -11,9 +11,10 @@ use tracing::trace;
 
 use directories::ProjectDirs;
 
-use crate::config::{CONFIG_FILENAME, Config, FileHandlingConfig};
+use crate::config::{CONFIG_FILENAME, Config, FileHandlingConfig, HistoryConfig};
 
 mod handle_files;
+mod history_manager;
 mod monitor_config;
 mod monitor_folders;
 
@@ -21,7 +22,7 @@ pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
 #[derive(Debug)]
 struct AppPaths {
-    _data_dir: PathBuf,
+    data_dir: PathBuf,
     _config_dir: PathBuf,
     config_path: PathBuf,
 }
@@ -29,7 +30,7 @@ struct AppPaths {
 impl AppPaths {
     pub fn new(data_dir: PathBuf, config_dir: PathBuf) -> Self {
         Self {
-            _data_dir: data_dir,
+            data_dir,
             _config_dir: config_dir.clone(),
             config_path: PathBuf::from(config_dir).join(CONFIG_FILENAME),
         }
@@ -39,6 +40,7 @@ impl AppPaths {
 #[derive(Debug)]
 pub struct App {
     file_handling_config: Arc<RwLock<FileHandlingConfig>>,
+    _history_config: Arc<RwLock<HistoryConfig>>,
     app_paths: AppPaths,
 }
 
@@ -53,11 +55,11 @@ impl App {
         };
 
         let app_paths = AppPaths::new(data_dir, config_dir);
+        let config = Config::init(&app_paths.config_path, &app_paths.data_dir);
 
         App {
-            file_handling_config: Arc::new(RwLock::new(
-                Config::init(&app_paths.config_path).file_handling_config,
-            )),
+            file_handling_config: Arc::new(RwLock::new(config.file_handling_config)),
+            _history_config: Arc::new(RwLock::new(config.history_config)),
             app_paths,
         }
     }

@@ -1,9 +1,7 @@
 use std::{
-    any::Any,
-    collections::HashMap,
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, RwLock,
+        Arc, RwLock,
         mpsc::{self, Sender},
     },
 };

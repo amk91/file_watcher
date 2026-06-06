@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, RwLock, mpsc::Receiver},
+    sync::{Arc, RwLock, mpsc::Receiver},
     thread,
     time::{Duration, SystemTime},
 };
@@ -9,10 +9,7 @@ use std::{
 use anyhow::anyhow;
 use tracing::{info, warn};
 
-use crate::{
-    app::App,
-    config::FileHandlingConfig,
-};
+use crate::{app::App, config::FileHandlingConfig};
 
 #[derive(Debug)]
 struct MovingInfo {
