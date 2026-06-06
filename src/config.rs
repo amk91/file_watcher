@@ -26,6 +26,8 @@ pub struct FileHandlingConfig {
 pub struct HistoryConfig {
     pub filepath: PathBuf,
     pub max_size_mb: usize,
+    pub flush_interval: Duration,
+    pub thread_sleep: Duration,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -49,6 +51,8 @@ impl ::std::default::Default for Config {
             history_config: HistoryConfig {
                 filepath: "".into(),
                 max_size_mb: 5,
+                flush_interval: Duration::from_millis(1000),
+                thread_sleep: Duration::from_millis(100),
             },
         }
     }
