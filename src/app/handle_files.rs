@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, mpsc::Receiver},
+    sync::{Arc, Mutex, RwLock, mpsc::Receiver},
     thread,
     time::{Duration, SystemTime},
 };
@@ -10,15 +10,23 @@ use anyhow::anyhow;
 use tracing::{info, warn};
 
 use crate::{
-    app::{App, MovingInfo},
-    config::Config,
+    app::App,
+    config::FileHandlingConfig,
 };
 
+#[derive(Debug)]
+struct MovingInfo {
+    pub timeout: Duration,
+    pub attempts: u8,
+    pub source_folder: String,
+    pub destination_folder: String,
+}
+
 impl App {
-    pub fn handle_files(config: Arc<Mutex<Config>>, receiver: Receiver<PathBuf>) {
+    pub fn handle_files(config: Arc<RwLock<FileHandlingConfig>>, receiver: Receiver<PathBuf>) {
         let mut files_list: HashMap<PathBuf, MovingInfo> = HashMap::new();
 
-        let config_locked = config.lock().expect("Unable to acquire lock");
+        let config_locked = config.read().expect("Unable to acquire lock");
         let check_interval = config_locked.check_interval;
         let part_temp_file_check = config_locked.part_temp_file_check;
         let thread_sleep = config_locked.thread_sleep;
@@ -63,7 +71,7 @@ impl App {
     fn update_files_list(
         filename: PathBuf,
         part_temp_file_check: bool,
-        config: &Arc<Mutex<Config>>,
+        config: &Arc<RwLock<FileHandlingConfig>>,
         files_list: &mut HashMap<PathBuf, MovingInfo>,
     ) {
         info!("event received for {}", filename.display());
@@ -93,7 +101,7 @@ impl App {
             }
         };
 
-        if let Ok(config) = config.lock() {
+        if let Ok(config) = config.read() {
             for folder_monitor in &config.folder_monitors {
                 if extension == folder_monitor.extension {
                     info!(

@@ -1,7 +1,9 @@
 use std::{
+    any::Any,
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, RwLock,
         mpsc::{self, Sender},
     },
 };
@@ -14,7 +16,7 @@ use tracing::{error, trace};
 
 use crate::{
     app::App,
-    config::Config,
+    config::{Config, FileHandlingConfig},
 };
 
 impl App {
@@ -31,7 +33,11 @@ impl App {
         })
     }
 
-    pub fn monitor_config(config: Arc<Mutex<Config>>, config_path: PathBuf, tx_config_updated: Sender<()>) {
+    pub fn monitor_config(
+        config_path: PathBuf,
+        tx_config_updated: Sender<()>,
+        file_handling_config: Arc<RwLock<FileHandlingConfig>>,
+    ) {
         let (sender, receiver) = mpsc::channel();
         let mut watcher = match App::setup_config_watcher(sender) {
             Ok(watcher) => watcher,
@@ -43,15 +49,14 @@ impl App {
         }
 
         for _ in receiver {
-            match config.lock() {
-                Ok(mut config) => match confy::load_path::<Config>(&config_path) {
+            trace!("Configuration has been changed");
+            if let Ok(mut file_handling_config) = file_handling_config.write() {
+                match confy::load_path::<Config>(&config_path) {
                     Ok(config_updated) => {
-                        *config = config_updated;
-                        trace!(?config, "Configuration updated");
+                        *file_handling_config = config_updated.file_handling_config;
                     }
                     Err(err) => error!(?err, "Unable to load configuration"),
-                },
-                Err(err) => error!(?err, "Unable to lock config"),
+                }
             }
 
             if let Err(err) = tx_config_updated.send(()) {

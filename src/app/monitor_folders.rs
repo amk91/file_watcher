@@ -1,8 +1,7 @@
 use std::{
     path::{Path, PathBuf},
     sync::{
-        Arc, Mutex,
-        mpsc::{self, Receiver, Sender},
+        Arc, RwLock, mpsc::{self, Receiver, Sender}
     },
     thread,
     time::Duration,
@@ -11,7 +10,7 @@ use std::{
 use notify::{Event, EventKind, INotifyWatcher, RecursiveMode, Watcher, event::CreateKind};
 use tracing::{error, warn};
 
-use crate::{app::App, config::Config};
+use crate::{app::App, config::FileHandlingConfig};
 
 impl App {
     #[tracing::instrument]
@@ -34,8 +33,8 @@ impl App {
         })
     }
 
-    fn setup_folders(config: &Arc<Mutex<Config>>, watcher: &mut INotifyWatcher, watched_folders: &mut Vec<PathBuf>) {
-        if let Ok(config) = config.lock() {
+    fn setup_folders(config: &Arc<RwLock<FileHandlingConfig>>, watcher: &mut INotifyWatcher, watched_folders: &mut Vec<PathBuf>) {
+        if let Ok(config) = config.read() {
             for folder_monitor in config.folder_monitors.iter().by_ref() {
                 // Do not add a watcher for a source folder that does not exist
                 if let Ok(false) | Err(_) = std::fs::exists(&folder_monitor.source_folder) {
@@ -89,7 +88,7 @@ impl App {
     }
 
     pub fn monitor_folders(
-        config: Arc<Mutex<Config>>,
+        config: Arc<RwLock<FileHandlingConfig>>,
         tx_new_file_event: Sender<PathBuf>,
         rx_config_updated: Receiver<()>,
     ) {
