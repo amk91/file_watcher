@@ -1,15 +1,18 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, RwLock, mpsc::Receiver},
-    thread,
-    time::{Duration, SystemTime},
+    sync::{Arc, RwLock},
+    time::{Duration, Instant},
 };
 
 use anyhow::anyhow;
-use tracing::{info, warn};
+use crossbeam_channel::{Receiver, Sender, select};
+use tracing::{error, info, warn};
 
-use crate::{app::App, config::FileHandlingConfig};
+use crate::{
+    app::{App, history_manager::EventType},
+    config::FileHandlingConfig,
+};
 
 #[derive(Debug)]
 struct MovingInfo {
@@ -20,48 +23,49 @@ struct MovingInfo {
 }
 
 impl App {
-    pub fn handle_files(config: Arc<RwLock<FileHandlingConfig>>, receiver: Receiver<PathBuf>) {
+    pub fn handle_files(
+        config: Arc<RwLock<FileHandlingConfig>>,
+        receiver: Receiver<PathBuf>,
+        tx_event: Sender<EventType>,
+    ) {
         let mut files_list: HashMap<PathBuf, MovingInfo> = HashMap::new();
 
         let config_locked = config.read().expect("Unable to acquire lock");
         let check_interval = config_locked.check_interval;
         let part_temp_file_check = config_locked.part_temp_file_check;
-        let thread_sleep = config_locked.thread_sleep;
         drop(config_locked);
 
-        let mut timeout = check_interval;
-        let mut process_time = SystemTime::now();
+        let mut next_check = Instant::now() + check_interval;
         loop {
-            if let Ok(filename) = receiver.try_recv() {
-                App::update_files_list(filename, part_temp_file_check, &config, &mut files_list);
-            }
-
-            timeout = timeout.saturating_sub(
-                thread_sleep.saturating_sub(process_time.elapsed().unwrap_or(Duration::ZERO)),
-            );
-
-            if timeout == Duration::ZERO {
-                timeout = check_interval;
-
-                let mut files_to_move = vec![];
-                for (filename, moving_info) in files_list.iter_mut() {
-                    moving_info.timeout = moving_info.timeout.saturating_sub(check_interval);
-                    if moving_info.timeout == Duration::ZERO {
-                        files_to_move.push(filename.clone());
-                        info!(
-                            "Safety timeout for {} triggered, file is flagged for removal",
-                            filename.display()
-                        );
+            let time_to_next_check = next_check.saturating_duration_since(Instant::now());
+            select! {
+                recv(receiver) -> filename => {
+                    match filename {
+                        Ok(filename) => App::update_files_list(filename, part_temp_file_check, &config, &mut files_list),
+                        Err(err) => error!(?err, "Unable to retrieve event")
                     }
                 }
 
-                for filename in &mut files_to_move {
-                    App::handle_file(&mut files_list, filename);
+                recv(crossbeam_channel::after(time_to_next_check)) -> _ => {
+                    let mut files_to_move = vec![];
+                    for (filename, moving_info) in files_list.iter_mut() {
+                        moving_info.timeout = moving_info.timeout.saturating_sub(check_interval);
+                        if moving_info.timeout == Duration::ZERO {
+                            files_to_move.push(filename.clone());
+                            info!(
+                                "Safety timeout for {} triggered, file is flagged for removal",
+                                filename.display()
+                            );
+                        }
+                    }
+
+                    for filename in &mut files_to_move {
+                        App::handle_file(&mut files_list, filename);
+                    }
+
+                    next_check = Instant::now() + check_interval;
                 }
             }
-
-            thread::sleep(thread_sleep);
-            process_time = SystemTime::now();
         }
     }
 

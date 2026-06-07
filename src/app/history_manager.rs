@@ -1,31 +1,32 @@
 use std::{
-    fs::File,
+    fs::{OpenOptions, metadata},
     io::{BufWriter, Write},
-    sync::{Arc, RwLock, mpsc::Receiver},
-    thread,
-    time::{Duration, SystemTime},
+    sync::{Arc, RwLock},
+    time::Instant,
 };
 
+use crossbeam_channel::{Receiver, select};
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
 use crate::config::HistoryConfig;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-struct FileEventInfo {
+pub struct FileEventInfo {
     filepath: String,
     destination_path: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-enum EventType {
+pub enum EventType {
     FileDetected(FileEventInfo),
     FileMoved(FileEventInfo),
     SouceFolderMissing(String),
+    ConfigUpdated(String)
 }
 
 #[derive(Debug, Default)]
-struct HistoryManager {
+pub struct HistoryManager {
     config: Arc<RwLock<HistoryConfig>>,
 }
 
@@ -35,7 +36,7 @@ impl HistoryManager {
     }
 
     pub fn run(
-        mut self,
+        self,
         rx_event: Receiver<EventType>,
         rx_config_update: Receiver<()>,
     ) -> anyhow::Result<()> {
@@ -43,52 +44,76 @@ impl HistoryManager {
         let mut filepath = config.filepath.clone();
         let mut max_size_mb = config.max_size_mb;
         let mut flush_interval = config.flush_interval;
-        let mut thread_sleep = config.thread_sleep;
         drop(config);
 
-        let mut file = File::create(&filepath)?;
-        let mut writer = BufWriter::new(file);
+        let mut recreate_file = false;
+        let mut writer = BufWriter::new(
+            OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&filepath)?,
+        );
 
-        let mut timeout = flush_interval;
-        let mut process_time = SystemTime::now();
+        let mut next_flush = Instant::now() + flush_interval;
         loop {
-            if let Ok(_) = rx_config_update.try_recv() {
-                if let Ok(config) = self.config.read() {
-                    filepath = config.filepath.clone();
-                    max_size_mb = config.max_size_mb;
-                    flush_interval = config.flush_interval;
-                    thread_sleep = config.thread_sleep;
-                }
+            let time_to_next_flush = next_flush.saturating_duration_since(Instant::now());
+            select! {
+                recv(rx_config_update) -> _ => {
+                    if let Ok(config) = self.config.read() {
+                        recreate_file = filepath != config.filepath;
+                        filepath = config.filepath.clone();
+                        max_size_mb = config.max_size_mb;
+                        flush_interval = config.flush_interval;
+                    }
+                },
 
-                file = File::create(&filepath)?;
-
-                //TODO: if there are events to be logged at this point they are lost, fix it!
-                writer = BufWriter::new(file);
-            }
-
-            if let Ok(event) = rx_event.try_recv() {
-                match serde_json::to_string(&event) {
-                    Ok(event) => {
-                        if let Err(err) = writer.write(event.as_bytes()) {
-                            error!(?err, "Unable to write to BufWriter the event: {event}");
+                recv(rx_event) -> event => {
+                    if let Ok(event) = event {
+                        match serde_json::to_string(&event) {
+                            Ok(event) => {
+                                if let Err(err) = writer.write(event.as_bytes()) {
+                                    error!(?err, "Unable to write to BufWriter the event: {event}");
+                                }
+                            }
+                            Err(err) => error!(?err, ?event, "Unable to convert event to json"),
                         }
                     }
-                    Err(err) => error!(?err, ?event, "Unable to convert event to json"),
+                }
+
+                recv(crossbeam_channel::after(time_to_next_flush)) -> _ => {
+                    if let Err(err) = writer.flush() {
+                        error!(?err, "Unable to flush content to history file");
+                    }
+
+                    if recreate_file {
+                        writer = BufWriter::new(
+                            OpenOptions::new().create(true).append(true).open(&filepath)?
+                        );
+                        recreate_file = false;
+                    }
+
+                    match metadata(&filepath) {
+                        Ok(metadata) => {
+                            let max_size_bytes = (max_size_mb as u64) * 1024 * 1024;
+                            if metadata.len() >= max_size_bytes {
+                                let bak_filepath = filepath.clone().with_extension("bak");
+                                std::fs::rename(&filepath, &bak_filepath)?;
+
+                                writer = BufWriter::new(
+                                    OpenOptions::new().create(true).append(true).open(&filepath)?
+                                );
+                            }
+                        },
+                        Err(err) => error!(
+                            ?err,
+                            "Unable to retrieve metadata for file {}",
+                            filepath.display()
+                        ),
+                    }
+
+                    next_flush = Instant::now() + flush_interval;
                 }
             }
-
-            timeout = timeout.saturating_sub(
-                thread_sleep.saturating_sub(process_time.elapsed().unwrap_or(Duration::ZERO)),
-            );
-
-            if timeout == Duration::ZERO {
-                timeout = flush_interval;
-
-                //TODO: check size of file, if less than max flush, otherwise switch before doing so
-            }
-
-            thread::sleep(Duration::from_millis(100));
-            process_time = SystemTime::now();
         }
     }
 }

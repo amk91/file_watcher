@@ -1,16 +1,13 @@
 use std::{
     path::{Path, PathBuf},
-    sync::{
-        Arc, RwLock, mpsc::{self, Receiver, Sender}
-    },
-    thread,
-    time::Duration,
+    sync::{Arc, RwLock},
 };
 
+use crossbeam_channel::{Receiver, Sender, select, unbounded};
 use notify::{Event, EventKind, INotifyWatcher, RecursiveMode, Watcher, event::CreateKind};
 use tracing::{error, warn};
 
-use crate::{app::App, config::FileHandlingConfig};
+use crate::{app::{App, history_manager::EventType}, config::FileHandlingConfig};
 
 impl App {
     #[tracing::instrument]
@@ -21,11 +18,7 @@ impl App {
                     let path = event.paths[0].clone();
                     if let Some(filename) = path.file_name() {
                         if let Err(err) = sender.send(filename.into()) {
-                            error!(
-                                ?err,
-                                "Error sending event for file {}",
-                                filename.display()
-                            );
+                            error!(?err, "Error sending event for file {}", filename.display());
                         }
                     }
                 }
@@ -33,7 +26,11 @@ impl App {
         })
     }
 
-    fn setup_folders(config: &Arc<RwLock<FileHandlingConfig>>, watcher: &mut INotifyWatcher, watched_folders: &mut Vec<PathBuf>) {
+    fn setup_folders(
+        config: &Arc<RwLock<FileHandlingConfig>>,
+        watcher: &mut INotifyWatcher,
+        watched_folders: &mut Vec<PathBuf>,
+    ) {
         if let Ok(config) = config.read() {
             for folder_monitor in config.folder_monitors.iter().by_ref() {
                 // Do not add a watcher for a source folder that does not exist
@@ -62,8 +59,7 @@ impl App {
                 ) {
                     error!(
                         ?err,
-                        "Unable to watch folder {}",
-                        folder_monitor.source_folder
+                        "Unable to watch folder {}", folder_monitor.source_folder
                     );
                 } else {
                     watched_folders.push(PathBuf::from(folder_monitor.source_folder.clone()));
@@ -76,11 +72,7 @@ impl App {
     fn free_watchers(watched_folders: &mut Vec<PathBuf>, watcher: &mut INotifyWatcher) {
         for folder in watched_folders.iter() {
             if let Err(err) = watcher.unwatch(folder) {
-                warn!(
-                    ?err,
-                    "Unable to unwatch folder {}",
-                    folder.display()
-                );
+                warn!(?err, "Unable to unwatch folder {}", folder.display());
             }
         }
 
@@ -91,9 +83,10 @@ impl App {
         config: Arc<RwLock<FileHandlingConfig>>,
         tx_new_file_event: Sender<PathBuf>,
         rx_config_updated: Receiver<()>,
+        tx_event: Sender<EventType>,
     ) {
-        let (tx, rx) = mpsc::channel::<PathBuf>();
-        let mut watcher = match App::setup_watcher(tx) {
+        let (tx_inotify, rx_inotify) = unbounded::<PathBuf>();
+        let mut watcher = match App::setup_watcher(tx_inotify) {
             Ok(watcher) => watcher,
             Err(err) => panic!("Unable to generate watcher: {err:#?}"),
         };
@@ -102,18 +95,25 @@ impl App {
         App::setup_folders(&config, &mut watcher, &mut watched_folders);
 
         loop {
-            if let Ok(filename) = rx.try_recv() {
-                if let Err(err) = tx_new_file_event.send(filename) {
-                    error!(?err, "Unable to send filename over");
+            select! {
+                recv(rx_inotify) -> filename => {
+                    match filename {
+                        Ok(filename) => {
+                            if let Err(err) = tx_new_file_event.send(filename) {
+                                error!(?err, "Unable to send filename over");
+                            }
+                        }
+                        Err(err) => {
+                            error!(?err, "Unable to retrieve inotify event");
+                        }
+                    }
+                }
+
+                recv(rx_config_updated) -> _ => {
+                    App::free_watchers(&mut watched_folders, &mut watcher);
+                    App::setup_folders(&config, &mut watcher, &mut watched_folders);
                 }
             }
-
-            if let Ok(_) = rx_config_updated.try_recv() {
-                App::free_watchers(&mut watched_folders, &mut watcher);
-                App::setup_folders(&config, &mut watcher, &mut watched_folders);
-            }
-
-            thread::sleep(Duration::from_millis(100));
         }
     }
 }

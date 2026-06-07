@@ -1,15 +1,12 @@
 use std::{
     path::PathBuf,
-    sync::{
-        Arc, RwLock,
-        mpsc::{self},
-    },
+    sync::{Arc, RwLock},
     thread,
 };
 
-use tracing::trace;
-
+use crossbeam_channel::unbounded;
 use directories::ProjectDirs;
+use tracing::{error, trace};
 
 use crate::config::{CONFIG_FILENAME, Config, FileHandlingConfig, HistoryConfig};
 
@@ -17,6 +14,8 @@ mod handle_files;
 mod history_manager;
 mod monitor_config;
 mod monitor_folders;
+
+use history_manager::HistoryManager;
 
 pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
@@ -40,7 +39,7 @@ impl AppPaths {
 #[derive(Debug)]
 pub struct App {
     file_handling_config: Arc<RwLock<FileHandlingConfig>>,
-    _history_config: Arc<RwLock<HistoryConfig>>,
+    history_config: Arc<RwLock<HistoryConfig>>,
     app_paths: AppPaths,
 }
 
@@ -59,36 +58,89 @@ impl App {
 
         App {
             file_handling_config: Arc::new(RwLock::new(config.file_handling_config)),
-            _history_config: Arc::new(RwLock::new(config.history_config)),
+            history_config: Arc::new(RwLock::new(config.history_config)),
             app_paths,
         }
     }
 
     pub fn run(&mut self) {
-        let (tx_new_file_event, rx_new_file_event) = mpsc::channel::<PathBuf>();
-        let (tx_config_updated, rx_config_updated) = mpsc::channel::<()>();
+        let (tx_new_file_event, rx_new_file_event) = unbounded::<PathBuf>();
+        let (tx_file_handling_config_updated, rx_file_handling_config_updated) = unbounded::<()>();
+        let (tx_history_config_updated, rx_history_config_updated) = unbounded::<()>();
+        let (tx_event, rx_event) = unbounded();
+
+        trace!("Spawning configuration monitor thread");
+        let history_config = self.history_config.clone();
+        let history_thread = thread::spawn(|| {
+            let history_manager = HistoryManager::default().init(history_config);
+            history_manager
+                .run(rx_event, rx_history_config_updated)
+                .unwrap();
+        });
 
         trace!("Spawning configuration monitor thread");
         let file_handling_config = self.file_handling_config.clone();
+        let history_config = self.history_config.clone();
         let config_path = self.app_paths.config_path.clone();
+        let tx_event_monitor_config = tx_event.clone();
         let monitor_config_thread = thread::spawn(|| {
-            App::monitor_config(config_path, tx_config_updated, file_handling_config)
+            App::monitor_config(
+                config_path,
+                tx_file_handling_config_updated,
+                tx_history_config_updated,
+                file_handling_config,
+                history_config,
+                tx_event_monitor_config,
+            );
         });
 
         trace!("Spawning folders monitor thread");
-        let config = self.file_handling_config.clone();
+        let file_handling_config = self.file_handling_config.clone();
+        let tx_event_monitor_folders = tx_event.clone();
         let monitor_folders_thread = thread::spawn(|| {
-            App::monitor_folders(config, tx_new_file_event, rx_config_updated);
+            App::monitor_folders(
+                file_handling_config,
+                tx_new_file_event,
+                rx_file_handling_config_updated,
+                tx_event_monitor_folders,
+            );
         });
 
         trace!("Spawning file handling thread");
-        let config = self.file_handling_config.clone();
+        let file_handling_config = self.file_handling_config.clone();
+        let tx_event_file_handling = tx_event.clone();
         let handle_files_thread = thread::spawn(|| {
-            App::handle_files(config, rx_new_file_event);
+            App::handle_files(
+                file_handling_config,
+                rx_new_file_event,
+                tx_event_file_handling,
+            );
         });
 
-        monitor_config_thread.join().unwrap();
-        monitor_folders_thread.join().unwrap();
-        handle_files_thread.join().unwrap();
+        let mut error_on_shutdown = false;
+        if let Err(err) = handle_files_thread.join() {
+            error!(?err, "Handling files thread panicked during shutdown");
+            error_on_shutdown = true;
+        }
+
+        if let Err(err) = monitor_folders_thread.join() {
+            error!(?err, "Handling files thread panicked during shutdown");
+            error_on_shutdown = true;
+        }
+
+        if let Err(err) = monitor_config_thread.join() {
+            error!(?err, "Handling files thread panicked during shutdown");
+            error_on_shutdown = true;
+        }
+
+        if let Err(err) = history_thread.join() {
+            error!(?err, "Handling files thread panicked during shutdown");
+            error_on_shutdown = true;
+        }
+
+        if error_on_shutdown {
+            error!("Threads panicked");
+            std::process::exit(1);
+        }
     }
 }
