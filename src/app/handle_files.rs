@@ -10,7 +10,7 @@ use crossbeam_channel::{Receiver, Sender, select};
 use tracing::{error, info, warn};
 
 use crate::{
-    app::{App, history_manager::EventType},
+    app::{App, history_manager::{EventType, FileEventInfo}},
     config::FileHandlingConfig,
 };
 
@@ -60,7 +60,7 @@ impl App {
                     }
 
                     for filename in &mut files_to_move {
-                        App::handle_file(&mut files_list, filename);
+                        App::handle_file(&mut files_list, filename, &tx_event);
                     }
 
                     next_check = Instant::now() + check_interval;
@@ -135,7 +135,11 @@ impl App {
         }
     }
 
-    fn handle_file(files_list: &mut HashMap<PathBuf, MovingInfo>, filename: &mut PathBuf) {
+    fn handle_file(
+        files_list: &mut HashMap<PathBuf, MovingInfo>,
+        filename: &mut PathBuf,
+        tx_event: &Sender<EventType>,
+    ) {
         let mut remove = false;
         if let Some(moving_info) = files_list.get_mut(filename) {
             match App::move_file(
@@ -149,11 +153,19 @@ impl App {
                         "File {} moved successfully and removed from list",
                         filename.display()
                     );
+
+                    if let Err(err) = tx_event.send(EventType::FileMoved(FileEventInfo {
+                        filepath: PathBuf::from(&moving_info.source_folder).join(&filename),
+                        destination_path: PathBuf::from(&moving_info.destination_folder).join(&filename),
+                    })) {
+                        error!(?err, "Unable to send event to history manager");
+                    }
                 }
-                Err(_) => {
+                Err(err) => {
                     if moving_info.attempts == 0 {
                         remove = true;
                         warn!(
+                            ?err,
                             "Unable to move {} from {} to {}",
                             filename.display(),
                             moving_info.source_folder,
@@ -202,7 +214,7 @@ impl App {
                 info!("Cross device transfer not allowed, copy-remove data");
                 std::fs::copy(&source_filepath, &destination_filepath).map(|_| ())?;
                 std::fs::remove_file(&source_filepath).map_err(|err| {
-                    anyhow!("Unable to removing file {source_filepath:#?}: {err:#?}")
+                    anyhow!("Unable to remove file {source_filepath:#?}: {err:#?}")
                 })
             }
             Err(err) => Err(anyhow!(

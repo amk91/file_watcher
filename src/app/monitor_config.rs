@@ -8,11 +8,12 @@ use notify::{
     Event, EventKind, INotifyWatcher, RecursiveMode, Watcher,
     event::{AccessKind, AccessMode},
 };
-use tracing::{Level, error, span, trace, warn};
+use serde::Serialize;
+use tracing::{error, info, warn};
 
 use crate::{
     app::{App, history_manager::EventType},
-    config::{self, Config, FileHandlingConfig, HistoryConfig},
+    config::{Config, FileHandlingConfig, HistoryConfig},
 };
 
 impl App {
@@ -35,7 +36,7 @@ impl App {
         }
 
         for _ in receiver {
-            trace!("Configuration has been changed");
+            info!("Configuration has been changed");
             let (file_handling_config_updated, history_config_updated) =
                 match confy::load_path::<Config>(&config_path) {
                     Ok(config_updated) => (
@@ -80,7 +81,7 @@ impl App {
         })
     }
 
-    fn notify_config<T: PartialEq>(
+    fn notify_config<T: PartialEq + Serialize + Sized + std::fmt::Debug>(
         config: &Arc<RwLock<T>>,
         config_updated: T,
         tx_config_update: &Sender<()>,
@@ -100,6 +101,15 @@ impl App {
             match config.write() {
                 Ok(mut config) => {
                     *config = config_updated;
+
+                    match serde_json::to_string(&*config) {
+                        Ok(json_string) => if let Err(err) = tx_event.send(
+                            EventType::ConfigUpdated(json_string.clone())
+                        ) {
+                            error!(?err, %json_string, "Unable to send event to history manager");
+                        },
+                        Err(err) => error!(?err, ?config, "Unable to convert config to json with serde"),
+                    }
 
                     if let Err(err) = tx_config_update.send(()) {
                         error!(?err, "Unable to send notification about config updated");

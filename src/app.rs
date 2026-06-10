@@ -22,7 +22,6 @@ pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 #[derive(Debug)]
 struct AppPaths {
     data_dir: PathBuf,
-    _config_dir: PathBuf,
     config_path: PathBuf,
 }
 
@@ -30,7 +29,6 @@ impl AppPaths {
     pub fn new(data_dir: PathBuf, config_dir: PathBuf) -> Self {
         Self {
             data_dir,
-            _config_dir: config_dir.clone(),
             config_path: PathBuf::from(config_dir).join(CONFIG_FILENAME),
         }
     }

@@ -1,8 +1,5 @@
 use std::{
-    fs::{OpenOptions, metadata},
-    io::{BufWriter, Write},
-    sync::{Arc, RwLock},
-    time::Instant,
+    fs::{OpenOptions, metadata}, io::{BufWriter, Write}, path::PathBuf, sync::{Arc, RwLock}, time::Instant
 };
 
 use crossbeam_channel::{Receiver, select};
@@ -13,8 +10,8 @@ use crate::config::HistoryConfig;
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct FileEventInfo {
-    filepath: String,
-    destination_path: String,
+    pub filepath: PathBuf,
+    pub destination_path: PathBuf,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -22,7 +19,8 @@ pub enum EventType {
     FileDetected(FileEventInfo),
     FileMoved(FileEventInfo),
     SouceFolderMissing(String),
-    ConfigUpdated(String)
+    SourceFileMissing(PathBuf),
+    ConfigUpdated(String),
 }
 
 #[derive(Debug, Default)]
@@ -70,9 +68,10 @@ impl HistoryManager {
                 recv(rx_event) -> event => {
                     if let Ok(event) = event {
                         match serde_json::to_string(&event) {
-                            Ok(event) => {
-                                if let Err(err) = writer.write(event.as_bytes()) {
-                                    error!(?err, "Unable to write to BufWriter the event: {event}");
+                            Ok(mut event_json) => {
+                                event_json.push('\n');
+                                if let Err(err) = writer.write(event_json.as_bytes()) {
+                                    error!(?err, "Unable to write to BufWriter the event: {event_json}");
                                 }
                             }
                             Err(err) => error!(?err, ?event, "Unable to convert event to json"),

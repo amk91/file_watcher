@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2024"
 authors = ["amk319"]
 
+[profile.release]
+panic = "abort"
+
 [dependencies]
 anyhow = "1.0.102"
 confy = "2.0.0"

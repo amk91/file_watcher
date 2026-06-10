@@ -7,7 +7,7 @@ use crossbeam_channel::{Receiver, Sender, select, unbounded};
 use notify::{Event, EventKind, INotifyWatcher, RecursiveMode, Watcher, event::CreateKind};
 use tracing::{error, warn};
 
-use crate::{app::{App, history_manager::EventType}, config::FileHandlingConfig};
+use crate::{app::{App, history_manager::{EventType, FileEventInfo}}, config::FileHandlingConfig};
 
 impl App {
     #[tracing::instrument]
@@ -99,8 +99,15 @@ impl App {
                 recv(rx_inotify) -> filename => {
                     match filename {
                         Ok(filename) => {
-                            if let Err(err) = tx_new_file_event.send(filename) {
+                            if let Err(err) = tx_new_file_event.send(filename.clone()) {
                                 error!(?err, "Unable to send filename over");
+                            } else {
+                                if let Err(err) = tx_event.send(EventType::FileDetected(FileEventInfo {
+                                    filepath: PathBuf::from(filename),
+                                    destination_path: PathBuf::from(""),
+                                })) {
+                                    error!(?err, "Unable to send event to history manager");
+                                }
                             }
                         }
                         Err(err) => {
