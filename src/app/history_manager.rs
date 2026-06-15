@@ -4,7 +4,7 @@ use std::{
 
 use crossbeam_channel::{Receiver, select};
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, trace};
 
 use crate::config::HistoryConfig;
 
@@ -42,6 +42,7 @@ impl HistoryManager {
         let mut filepath = config.filepath.clone();
         let mut max_size_mb = config.max_size_mb;
         let mut flush_interval = config.flush_interval;
+        trace!(?config);
         drop(config);
 
         let mut recreate_file = false;
@@ -62,6 +63,13 @@ impl HistoryManager {
                         filepath = config.filepath.clone();
                         max_size_mb = config.max_size_mb;
                         flush_interval = config.flush_interval;
+                        trace!(
+                            ?recreate_file,
+                            ?filepath,
+                            ?max_size_mb,
+                            ?flush_interval,
+                            "Configuration updated"
+                        );
                     }
                 },
 
@@ -69,6 +77,7 @@ impl HistoryManager {
                     if let Ok(event) = event {
                         match serde_json::to_string(&event) {
                             Ok(mut event_json) => {
+                                trace!(?event, "Event received");
                                 event_json.push('\n');
                                 if let Err(err) = writer.write(event_json.as_bytes()) {
                                     error!(?err, "Unable to write to BufWriter the event: {event_json}");
@@ -93,6 +102,10 @@ impl HistoryManager {
 
                     match metadata(&filepath) {
                         Ok(metadata) => {
+                            trace!(
+                                "Check for history file size, file: {:.2} MB, max allowed: {max_size_mb} MB",
+                                (metadata.len() as f64) / 1024. / 1024.
+                            );
                             let max_size_bytes = (max_size_mb as u64) * 1024 * 1024;
                             if metadata.len() >= max_size_bytes {
                                 let bak_filepath = filepath.clone().with_extension("bak");

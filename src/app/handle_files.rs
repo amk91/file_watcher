@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::anyhow;
 use crossbeam_channel::{Receiver, Sender, select};
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
 use crate::{
     app::{App, history_manager::{EventType, FileEventInfo}},
@@ -33,6 +33,7 @@ impl App {
         let config_locked = config.read().expect("Unable to acquire lock");
         let check_interval = config_locked.check_interval;
         let part_temp_file_check = config_locked.part_temp_file_check;
+        trace!(?config);
         drop(config_locked);
 
         let mut next_check = Instant::now() + check_interval;
@@ -75,14 +76,14 @@ impl App {
         config: &Arc<RwLock<FileHandlingConfig>>,
         files_list: &mut HashMap<PathBuf, MovingInfo>,
     ) {
-        info!("event received for {}", filename.display());
+        trace!("Event received for {}", filename.display());
 
         let filename = if part_temp_file_check
             && let Some(ext) = filename.extension()
             && ext == "part"
             && let Some(filename) = filename.file_stem()
         {
-            info!("Part file for {} detected", filename.display());
+            trace!("Part file for {} detected", filename.display());
             PathBuf::from(filename)
         } else {
             filename
@@ -112,12 +113,12 @@ impl App {
 
                     if files_list.contains_key(&filename) {
                         files_list.remove(&filename);
-                        info!(
+                        trace!(
                             "Possible temp file {} already registered and will be removed",
                             filename.display()
                         );
                     } else {
-                        info!("Add file {} to monitored list", filename.display());
+                        trace!("Add file {} to monitored list", filename.display());
                         files_list.insert(
                             filename,
                             MovingInfo {
@@ -211,7 +212,7 @@ impl App {
                 Ok(())
             }
             Err(err) if err.kind() == std::io::ErrorKind::CrossesDevices => {
-                info!("Cross device transfer not allowed, copy-remove data");
+                trace!("Cross device transfer not allowed, copy-remove data");
                 std::fs::copy(&source_filepath, &destination_filepath).map(|_| ())?;
                 std::fs::remove_file(&source_filepath).map_err(|err| {
                     anyhow!("Unable to remove file {source_filepath:#?}: {err:#?}")
