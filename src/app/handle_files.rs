@@ -91,7 +91,7 @@ impl App {
 
         let extension = match filename.extension() {
             Some(extension) => match extension.to_str() {
-                Some(extension) => extension,
+                Some(extension) => String::from(extension),
                 None => {
                     warn!("Unable to retrieve extension from OsStr");
                     return;
@@ -105,7 +105,7 @@ impl App {
 
         if let Ok(config) = config.read() {
             for folder_monitor in &config.folder_monitors {
-                if extension == folder_monitor.extension {
+                if folder_monitor.extensions.contains(&extension) {
                     info!(
                         "File with extension {extension} found: {}",
                         filename.display()

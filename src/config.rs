@@ -30,7 +30,7 @@ pub struct HistoryConfig {
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct FolderMonitor {
-    pub extension: String,
+    pub extensions: Vec<String>,
     pub source_folder: String,
     pub destination_folder: String,
 }
@@ -41,15 +41,7 @@ impl ::std::default::Default for Config {
             file_handling_config: FileHandlingConfig {
                 part_temp_file_check: true,
                 //TODO: check for duplicate FolderMonitor
-                folder_monitors: vec![FolderMonitor {
-                    extension: "3mf".into(),
-                    source_folder: "/home/amk319/Downloads/".into(),
-                    destination_folder: "/home/amk319/Documents/3mf-files/".into(),
-                }, FolderMonitor {
-                    extension: "stl".into(),
-                    source_folder: "/home/amk319/Downloads/".into(),
-                    destination_folder: "/home/amk319/Documents/3mf-files/".into(),
-                }],
+                folder_monitors: vec![],
                 move_attempts: 5u8,
                 check_interval: Duration::from_millis(1000),
                 file_timeout: Duration::from_millis(5000),
