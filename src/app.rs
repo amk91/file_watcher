@@ -67,7 +67,7 @@ impl App {
         let (tx_history_config_updated, rx_history_config_updated) = unbounded::<()>();
         let (tx_event, rx_event) = unbounded();
 
-        trace!("Spawning configuration monitor thread");
+        trace!("Spawning history manager thread");
         let history_config = self.history_config.clone();
         let history_thread = thread::spawn(|| {
             let history_manager = HistoryManager::default().init(history_config);

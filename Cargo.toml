@@ -9,7 +9,6 @@ panic = "abort"
 
 [dependencies]
 anyhow = "1.0.102"
-confy = "2.0.0"
 crossbeam-channel = "0.5.15"
 directories = "6.0.0"
 notify = "8.2.0"

@@ -102,10 +102,6 @@ impl HistoryManager {
 
                     match metadata(&filepath) {
                         Ok(metadata) => {
-                            trace!(
-                                "Check for history file size, file: {:.2} MB, max allowed: {max_size_mb} MB",
-                                (metadata.len() as f64) / 1024. / 1024.
-                            );
                             let max_size_bytes = (max_size_mb as u64) * 1024 * 1024;
                             if metadata.len() >= max_size_bytes {
                                 let bak_filepath = filepath.clone().with_extension("bak");

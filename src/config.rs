@@ -1,7 +1,7 @@
 use std::{fs::{File, OpenOptions}, io::{ErrorKind::{self, NotFound}, Read, Write}, path::PathBuf, time::Duration};
 
 use serde::{Deserialize, Serialize};
-use tracing::{error, info, trace, warn};
+use tracing::{error, trace, warn};
 
 pub const CONFIG_FILENAME: &str = "config.yml";
 pub const HISTORY_FILENAME: &str = "history.json";

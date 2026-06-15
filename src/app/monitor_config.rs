@@ -1,6 +1,5 @@
 use std::{
-    path::{Path, PathBuf},
-    sync::{Arc, RwLock},
+    fs::File, io::Read, path::{Path, PathBuf}, sync::{Arc, RwLock}
 };
 
 use crossbeam_channel::{Sender, unbounded};
@@ -37,21 +36,29 @@ impl App {
 
         for _ in receiver {
             info!("Configuration has been changed");
-            let (file_handling_config_updated, history_config_updated) =
-                match confy::load_path::<Config>(&config_path) {
-                    Ok(config_updated) => (
-                        config_updated.file_handling_config,
-                        config_updated.history_config,
-                    ),
+            let (file_handling_config_updated, history_config_updated) = {
+                let mut file = match File::open(&config_path) {
+                    Ok(file) => file,
                     Err(err) => {
-                        error!(
-                            ?err,
-                            "Unable to load configuration at path {}",
-                            config_path.display()
-                        );
+                        warn!(?err, "Unable to open file at {}", config_path.display());
                         continue;
                     }
                 };
+
+                let mut config_buffer = String::new();
+                if let Err(err) = file.read_to_string(&mut config_buffer) {
+                    warn!(?err, "Unable to read the whole file to string, filepath {}", config_path.display());
+                    continue;
+                }
+
+                match yaml_serde::from_str::<Config>(&config_buffer) {
+                    Ok(config) => (config.file_handling_config, config.history_config),
+                    Err(err) => {
+                        warn!(?err, "Unable to parse configuration from yaml file at {}", config_path.display());
+                        continue;
+                    }
+                }
+            };
 
             App::notify_config(
                 &file_handling_config,
