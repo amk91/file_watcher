@@ -32,7 +32,7 @@ impl App {
         watched_folders: &mut Vec<PathBuf>,
     ) {
         if let Ok(config) = config.read() {
-            for folder_monitor in config.folder_monitors.iter().by_ref() {
+            for folder_monitor in config.folder_monitors.iter().filter(|monitor| monitor.enabled) {
                 // Do not add a watcher for a source folder that does not exist
                 if let Ok(false) | Err(_) = std::fs::exists(&folder_monitor.source_folder) {
                     warn!(

@@ -6,7 +6,9 @@ use std::{
 
 use crossbeam_channel::unbounded;
 use directories::ProjectDirs;
-use tracing::{error, trace};
+use tracing::{Level, error, level_filters::LevelFilter, trace};
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::{layer::SubscriberExt, prelude::*, util::SubscriberInitExt};
 
 use crate::config::{CONFIG_FILENAME, Config, FileHandlingConfig, HistoryConfig};
 
@@ -39,6 +41,7 @@ pub struct App {
     file_handling_config: Arc<RwLock<FileHandlingConfig>>,
     history_config: Arc<RwLock<HistoryConfig>>,
     app_paths: AppPaths,
+    _tracing_guard: Option<WorkerGuard>,
 }
 
 impl App {
@@ -51,6 +54,8 @@ impl App {
             None => panic!("Unable to retrieve projects folders, unable to continue"),
         };
 
+        let guard = App::init_tracing(&data_dir.join("log"));
+
         let app_paths = AppPaths::new(data_dir, config_dir);
         let config = Config::init(&app_paths.config_path, &app_paths.data_dir);
 
@@ -58,6 +63,38 @@ impl App {
             file_handling_config: Arc::new(RwLock::new(config.file_handling_config)),
             history_config: Arc::new(RwLock::new(config.history_config)),
             app_paths,
+            _tracing_guard: guard,
+        }
+    }
+
+    fn init_tracing(log_dir: &PathBuf) -> Option<WorkerGuard> {
+        if cfg!(debug_assertions) {
+            tracing_subscriber::fmt()
+                .with_max_level(Level::TRACE)
+                .init();
+
+            None
+        } else {
+            let file_appender = tracing_appender::rolling::daily(log_dir, "file_watcher.log");
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+            let file_layer = tracing_subscriber::fmt::layer()
+                .with_writer(non_blocking)
+                .with_filter(LevelFilter::INFO);
+
+            let registry = tracing_subscriber::registry().with(file_layer);
+
+            match tracing_journald::layer() {
+                Ok(layer) => {
+                    registry.with(layer.with_filter(LevelFilter::TRACE)).init();
+                }
+                Err(err) => {
+                    registry.init();
+                    error!(?err, "Unable to register journalctl layer to tracing");
+                }
+            }
+
+            Some(guard)
         }
     }
 

@@ -30,6 +30,7 @@ pub struct HistoryConfig {
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct FolderMonitor {
+    pub enabled: bool,
     pub extensions: Vec<String>,
     pub source_folder: String,
     pub destination_folder: String,
@@ -40,7 +41,6 @@ impl ::std::default::Default for Config {
         Self {
             file_handling_config: FileHandlingConfig {
                 part_temp_file_check: true,
-                //TODO: check for duplicate FolderMonitor
                 folder_monitors: vec![],
                 move_attempts: 5u8,
                 check_interval: Duration::from_millis(1000),
@@ -70,7 +70,7 @@ impl Config {
                             Err(err) => {
                                 warn!(?err, "Unable to parse configuration from file");
 
-                                let config_path_bak = PathBuf::from(&config_path).with_extension("yaml.bak");
+                                let config_path_bak = PathBuf::from(&config_path).with_extension("yml.bak");
                                 if let Err(err) = std::fs::copy(&config_path, config_path_bak) {
                                     warn!(?err, "Unable to copy config file to a bak file");
                                 }
