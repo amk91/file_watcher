@@ -1,9 +1,17 @@
-use std::{fs::{File, OpenOptions}, io::{ErrorKind::{self, NotFound}, Read, Write}, path::PathBuf, time::Duration};
+use std::{
+    fs::{File, OpenOptions},
+    io::{
+        ErrorKind::{self, NotFound},
+        Read, Write,
+    },
+    path::PathBuf,
+    time::Duration,
+};
 
 use serde::{Deserialize, Serialize};
 use tracing::{error, trace, warn};
 
-pub const CONFIG_FILENAME: &str = "config.yml";
+pub const CONFIG_FILENAME: &str = "config.json";
 pub const HISTORY_FILENAME: &str = "history.json";
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
@@ -41,7 +49,12 @@ impl ::std::default::Default for Config {
         Self {
             file_handling_config: FileHandlingConfig {
                 part_temp_file_check: true,
-                folder_monitors: vec![],
+                folder_monitors: vec![FolderMonitor {
+                    enabled: true,
+                    extensions: vec!["3mf".into(), "stl".into()],
+                    source_folder: "/home/amk319/Downloads/".into(),
+                    destination_folder: "/home/amk319/Documents/3dp-files/".into(),
+                }],
                 move_attempts: 5u8,
                 check_interval: Duration::from_millis(1000),
                 file_timeout: Duration::from_millis(5000),
@@ -61,45 +74,45 @@ impl Config {
             Ok(mut file) => {
                 let mut config_buffer = String::new();
                 match file.read_to_string(&mut config_buffer) {
-                    Ok(_) => {
-                        match yaml_serde::from_str::<Config>(&config_buffer) {
-                            Ok(config) => {
-                                trace!(?config, "Configuration loaded from yml file");
-                                config
-                            },
-                            Err(err) => {
-                                warn!(?err, "Unable to parse configuration from file");
+                    Ok(_) => match serde_json::from_str::<Config>(&config_buffer) {
+                        Ok(config) => {
+                            trace!(?config, "Configuration loaded from yml file");
+                            config
+                        }
+                        Err(err) => {
+                            warn!(?err, "Unable to parse configuration from file");
 
-                                let config_path_bak = PathBuf::from(&config_path).with_extension("yml.bak");
-                                if let Err(err) = std::fs::copy(&config_path, config_path_bak) {
-                                    warn!(?err, "Unable to copy config file to a bak file");
-                                }
+                            let config_path_bak =
+                                PathBuf::from(&config_path).with_extension("json.bak");
+                            if let Err(err) = std::fs::copy(&config_path, config_path_bak) {
+                                warn!(?err, "Unable to copy config file to a bak file");
+                            }
 
-                                Config::default()
-                            },
+                            Config::default()
                         }
                     },
                     Err(err) => {
                         warn!(?err, "Unable to read file to string");
                         Config::default()
-                    },
-                }
-            },
-            Err(err) if err.kind() == NotFound => {
-                match File::create_new(&config_path) {
-                    Ok(_) => Config::default(),
-                    Err(err) => {
-                        let err_string = format!("Unable to generate config file at {}", config_path.display());
-                        error!(?err, err_string);
-                        panic!("{err_string}: {err}");
                     }
+                }
+            }
+            Err(err) if err.kind() == NotFound => match File::create_new(&config_path) {
+                Ok(_) => Config::default(),
+                Err(err) => {
+                    let err_string = format!(
+                        "Unable to generate config file at {}",
+                        config_path.display()
+                    );
+                    error!(?err, err_string);
+                    panic!("{err_string}: {err}");
                 }
             },
             Err(err) => {
                 let err_string = format!("Unable to open config file at {}", config_path.display());
                 error!(?err, err_string);
                 panic!("{err_string}: {err}");
-            },
+            }
         };
 
         if config.history_config.filepath.as_os_str().is_empty()
@@ -130,18 +143,55 @@ impl Config {
             }
         }
 
-        match yaml_serde::to_string(&config) {
-            Ok(config_string) => {
-                match OpenOptions::new().write(true).open(&config_path) {
-                    Ok(mut file) => if let Err(err) = file.write_all(config_string.as_bytes()) {
+        config.check_for_duplicate_monitors();
+
+        match serde_json::to_string_pretty(&config) {
+            Ok(config_string) => match OpenOptions::new().write(true).open(&config_path) {
+                Ok(mut file) => {
+                    if let Err(err) = file.write_all(config_string.as_bytes()) {
                         error!(?err, "Unable to write to config yaml string to file");
-                    },
-                    Err(err) => error!(?err, "Unable to open config file in write mode"),
+                    }
                 }
-            }
-            Err(err) => error!(?err, "Unable to parse configuration as yaml file")
+                Err(err) => error!(?err, "Unable to open config file in write mode"),
+            },
+            Err(err) => error!(?err, "Unable to parse configuration as yaml file"),
         }
 
         config
+    }
+
+    pub fn check_for_duplicate_monitors(&mut self) {
+        let mut duplicates = Vec::new();
+        let len = self.file_handling_config.folder_monitors.len();
+        for i in 0..len {
+            for j in (i + 1)..len {
+                let a = &self.file_handling_config.folder_monitors[i];
+                let b = &self.file_handling_config.folder_monitors[j];
+
+                if a.enabled && b.enabled {
+                    let same_source_and_dest = a.source_folder == b.source_folder
+                        && a.destination_folder == b.destination_folder;
+                    let same_ext_and_source =
+                        a.extensions == b.extensions && a.source_folder == b.source_folder;
+
+                    if same_source_and_dest || same_ext_and_source {
+                        duplicates.push(j);
+                        warn!(
+                            ?b,
+                            "Duplicate folder monitor is disabled because {}",
+                            if same_source_and_dest {
+                                "it has same source and same destination"
+                            } else {
+                                "it has same extensions list and same source"
+                            }
+                        );
+                    }
+                }
+            }
+        }
+
+        for i in duplicates {
+            self.file_handling_config.folder_monitors[i].enabled = false;
+        }
     }
 }

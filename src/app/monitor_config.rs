@@ -1,5 +1,8 @@
 use std::{
-    fs::File, io::Read, path::{Path, PathBuf}, sync::{Arc, RwLock}
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::{Arc, RwLock},
 };
 
 use crossbeam_channel::{Sender, unbounded};
@@ -47,14 +50,25 @@ impl App {
 
                 let mut config_buffer = String::new();
                 if let Err(err) = file.read_to_string(&mut config_buffer) {
-                    warn!(?err, "Unable to read the whole file to string, filepath {}", config_path.display());
+                    warn!(
+                        ?err,
+                        "Unable to read the whole file to string, filepath {}",
+                        config_path.display()
+                    );
                     continue;
                 }
 
-                match yaml_serde::from_str::<Config>(&config_buffer) {
-                    Ok(config) => (config.file_handling_config, config.history_config),
+                match serde_json::from_str::<Config>(&config_buffer) {
+                    Ok(mut config) => {
+                        config.check_for_duplicate_monitors();
+                        (config.file_handling_config, config.history_config)
+                    }
                     Err(err) => {
-                        warn!(?err, "Unable to parse configuration from yaml file at {}", config_path.display());
+                        warn!(
+                            ?err,
+                            "Unable to parse configuration from yaml file at {}",
+                            config_path.display()
+                        );
                         continue;
                     }
                 }
@@ -64,13 +78,13 @@ impl App {
                 &file_handling_config,
                 file_handling_config_updated,
                 &tx_file_handling_config_updated,
-                &tx_event
+                &tx_event,
             );
             App::notify_config(
                 &history_config,
                 history_config_updated,
                 &tx_history_config_updated,
-                &tx_event
+                &tx_event,
             );
         }
     }
@@ -110,12 +124,16 @@ impl App {
                     *config = config_updated;
 
                     match serde_json::to_string(&*config) {
-                        Ok(json_string) => if let Err(err) = tx_event.send(
-                            EventType::ConfigUpdated(json_string.clone())
-                        ) {
-                            error!(?err, %json_string, "Unable to send event to history manager");
-                        },
-                        Err(err) => error!(?err, ?config, "Unable to convert config to json with serde"),
+                        Ok(json_string) => {
+                            if let Err(err) =
+                                tx_event.send(EventType::ConfigUpdated(json_string.clone()))
+                            {
+                                error!(?err, %json_string, "Unable to send event to history manager");
+                            }
+                        }
+                        Err(err) => {
+                            error!(?err, ?config, "Unable to convert config to json with serde")
+                        }
                     }
 
                     if let Err(err) = tx_config_update.send(()) {
