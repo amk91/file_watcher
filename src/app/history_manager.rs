@@ -1,12 +1,18 @@
 use std::{
-    fs::{OpenOptions, metadata}, io::{BufWriter, Write}, path::PathBuf, sync::{Arc, RwLock}, time::Instant
+    fmt::Debug,
+    fs::{OpenOptions, metadata},
+    io::{BufWriter, Write},
+    path::PathBuf,
+    sync::{Arc, RwLock},
+    time::Instant,
 };
 
+use chrono::Local;
 use crossbeam_channel::{Receiver, select};
 use serde::{Deserialize, Serialize};
 use tracing::{error, trace};
 
-use crate::config::HistoryConfig;
+use crate::config::{FileHandlingConfig, HistoryConfig};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct FileEventInfo {
@@ -15,12 +21,24 @@ pub struct FileEventInfo {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub enum ConfigUpdatedType {
+    FileHandling(FileHandlingConfig),
+    History(HistoryConfig),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub enum EventType {
     FileDetected(FileEventInfo),
     FileMoved(FileEventInfo),
     SouceFolderMissing(String),
     SourceFileMissing(PathBuf),
-    ConfigUpdated(String),
+    ConfigUpdated(ConfigUpdatedType),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct HistoryEvent {
+    timestamp: String,
+    event_type: EventType,
 }
 
 #[derive(Debug, Default)]
@@ -75,6 +93,11 @@ impl HistoryManager {
 
                 recv(rx_event) -> event => {
                     if let Ok(event) = event {
+                        let event = HistoryEvent {
+                            timestamp: Local::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string(),
+                            event_type: event
+                        };
+
                         match serde_json::to_string(&event) {
                             Ok(mut event_json) => {
                                 trace!(?event, "Event received");
@@ -107,11 +130,12 @@ impl HistoryManager {
                                 let bak_filepath = filepath.clone().with_extension("bak");
                                 std::fs::rename(&filepath, &bak_filepath)?;
 
-                                writer = BufWriter::new(
-                                    OpenOptions::new().create(true).append(true).open(&filepath)?
-                                );
+                                recreate_file = true;
                             }
-                        },
+                        }
+                        Err(_) if !filepath.exists() => {
+                            recreate_file = true;
+                        }
                         Err(err) => error!(
                             ?err,
                             "Unable to retrieve metadata for file {}",

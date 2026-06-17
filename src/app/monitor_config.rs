@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     fs::File,
     io::Read,
     path::{Path, PathBuf},
@@ -14,7 +15,10 @@ use serde::Serialize;
 use tracing::{error, info, warn};
 
 use crate::{
-    app::{App, history_manager::EventType},
+    app::{
+        App,
+        history_manager::{ConfigUpdatedType, EventType},
+    },
     config::{Config, FileHandlingConfig, HistoryConfig},
 };
 
@@ -79,12 +83,14 @@ impl App {
                 file_handling_config_updated,
                 &tx_file_handling_config_updated,
                 &tx_event,
+                ConfigUpdatedType::FileHandling,
             );
             App::notify_config(
                 &history_config,
                 history_config_updated,
                 &tx_history_config_updated,
                 &tx_event,
+                ConfigUpdatedType::History,
             );
         }
     }
@@ -102,12 +108,16 @@ impl App {
         })
     }
 
-    fn notify_config<T: PartialEq + Serialize + Sized + std::fmt::Debug>(
+    fn notify_config<T, F>(
         config: &Arc<RwLock<T>>,
         config_updated: T,
         tx_config_update: &Sender<()>,
         tx_event: &Sender<EventType>,
-    ) {
+        to_config_updated: F,
+    ) where
+        T: PartialEq + Serialize + Sized + Debug + Clone,
+        F: FnOnce(T) -> ConfigUpdatedType,
+    {
         let config_changed = {
             match config.read() {
                 Ok(config) => *config != config_updated,
@@ -123,17 +133,9 @@ impl App {
                 Ok(mut config) => {
                     *config = config_updated;
 
-                    match serde_json::to_string(&*config) {
-                        Ok(json_string) => {
-                            if let Err(err) =
-                                tx_event.send(EventType::ConfigUpdated(json_string.clone()))
-                            {
-                                error!(?err, %json_string, "Unable to send event to history manager");
-                            }
-                        }
-                        Err(err) => {
-                            error!(?err, ?config, "Unable to convert config to json with serde")
-                        }
+                    let event = EventType::ConfigUpdated(to_config_updated((*config).clone()));
+                    if let Err(err) = tx_event.send(event) {
+                        error!(?err, "Unable to send event to history manager");
                     }
 
                     if let Err(err) = tx_config_update.send(()) {
