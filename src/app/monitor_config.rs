@@ -15,11 +15,9 @@ use serde::Serialize;
 use tracing::{error, info, warn};
 
 use crate::{
-    app::{
-        App,
-        history_manager::{ConfigUpdatedType, EventType},
-    },
+    app::App,
     config::{Config, FileHandlingConfig, HistoryConfig},
+    history_manager::{ConfigUpdatedType, EventType},
 };
 
 impl App {

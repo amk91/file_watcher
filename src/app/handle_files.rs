@@ -10,8 +10,9 @@ use crossbeam_channel::{Receiver, Sender, select};
 use tracing::{error, info, trace, warn};
 
 use crate::{
-    app::{App, history_manager::{EventType, FileEventInfo}},
+    app::App,
     config::FileHandlingConfig,
+    history_manager::{EventType, FileEventInfo},
 };
 
 #[derive(Debug)]
@@ -157,7 +158,8 @@ impl App {
 
                     if let Err(err) = tx_event.send(EventType::FileMoved(FileEventInfo {
                         filepath: PathBuf::from(&moving_info.source_folder).join(&filename),
-                        destination_path: PathBuf::from(&moving_info.destination_folder).join(&filename),
+                        destination_path: PathBuf::from(&moving_info.destination_folder)
+                            .join(&filename),
                     })) {
                         error!(?err, "Unable to send event to history manager");
                     }
@@ -214,9 +216,8 @@ impl App {
             Err(err) if err.kind() == std::io::ErrorKind::CrossesDevices => {
                 trace!("Cross device transfer not allowed, copy-remove data");
                 std::fs::copy(&source_filepath, &destination_filepath).map(|_| ())?;
-                std::fs::remove_file(&source_filepath).map_err(|err| {
-                    anyhow!("Unable to remove file {source_filepath:#?}: {err:#?}")
-                })
+                std::fs::remove_file(&source_filepath)
+                    .map_err(|err| anyhow!("Unable to remove file {source_filepath:#?}: {err:#?}"))
             }
             Err(err) => Err(anyhow!(
                 "Unable to rename file from {source_filepath:#?} to {destination_filepath:#?}, {err:#?}"

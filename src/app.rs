@@ -10,14 +10,11 @@ use tracing::{Level, error, level_filters::LevelFilter, trace};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, prelude::*, util::SubscriberInitExt};
 
-use crate::config::{CONFIG_FILENAME, Config, FileHandlingConfig, HistoryConfig};
+use crate::{config::{CONFIG_FILENAME, Config, FileHandlingConfig, HistoryConfig}, history_manager::HistoryManager};
 
 mod handle_files;
-mod history_manager;
 mod monitor_config;
 mod monitor_folders;
-
-use history_manager::HistoryManager;
 
 pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
 
