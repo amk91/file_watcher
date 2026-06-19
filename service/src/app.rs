@@ -4,23 +4,26 @@ use std::{
     thread,
 };
 
+use common::APP_NAME;
 use crossbeam_channel::unbounded;
 use directories::ProjectDirs;
 use tracing::{Level, error, level_filters::LevelFilter, trace};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, prelude::*, util::SubscriberInitExt};
 
-use crate::{config::{CONFIG_FILENAME, Config, FileHandlingConfig, HistoryConfig}, history_manager::HistoryManager};
+use crate::{
+    config::{CONFIG_FILENAME, Config, FileHandlingConfig, HistoryConfig},
+    history_manager::HistoryManager,
+};
 
 mod handle_files;
 mod monitor_config;
 mod monitor_folders;
 
-pub const APP_NAME: &str = env!("CARGO_PKG_NAME");
-
 #[derive(Debug)]
 struct AppPaths {
     data_dir: PathBuf,
+    config_dir: PathBuf,
     config_path: PathBuf,
 }
 
@@ -28,6 +31,7 @@ impl AppPaths {
     pub fn new(data_dir: PathBuf, config_dir: PathBuf) -> Self {
         Self {
             data_dir,
+            config_dir: config_dir.clone(),
             config_path: PathBuf::from(config_dir).join(CONFIG_FILENAME),
         }
     }
@@ -54,7 +58,11 @@ impl App {
         let guard = App::init_tracing(&data_dir.join("log"));
 
         let app_paths = AppPaths::new(data_dir, config_dir);
-        let config = Config::init(&app_paths.config_path, &app_paths.data_dir);
+        let config = Config::init(
+            &app_paths.config_path,
+            &app_paths.config_dir,
+            &app_paths.data_dir,
+        );
 
         App {
             file_handling_config: Arc::new(RwLock::new(config.file_handling_config)),

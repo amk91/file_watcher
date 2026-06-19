@@ -65,6 +65,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "common"
+version = "0.1.0"
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -110,23 +114,6 @@ dependencies = [
  "option-ext",
  "redox_users",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "file-watcher"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "crossbeam-channel",
- "directories",
- "notify",
- "serde",
- "serde_json",
- "tracing",
- "tracing-appender",
- "tracing-journald",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -178,6 +165,10 @@ dependencies = [
  "libc",
  "wasi",
 ]
+
+[[package]]
+name = "gui"
+version = "0.1.0"
 
 [[package]]
 name = "iana-time-zone"
@@ -465,6 +456,24 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "service"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "common",
+ "crossbeam-channel",
+ "directories",
+ "notify",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-appender",
+ "tracing-journald",
+ "tracing-subscriber",
 ]
 
 [[package]]

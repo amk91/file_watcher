@@ -1,21 +1,9 @@
-[package]
-name = "file-watcher"
+[workspace]
+members = ["common", "gui", "service"]
+default-members = ["service"]
+resolver = "2"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 authors = ["amk319"]
-
-[profile.release]
-panic = "abort"
-
-[dependencies]
-anyhow = "1.0.102"
-chrono = "0.4.45"
-crossbeam-channel = "0.5.15"
-directories = "6.0.0"
-notify = "8.2.0"
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
-tracing = "0.1.44"
-tracing-appender = "0.2.5"
-tracing-journald = "0.3.2"
-tracing-subscriber = "0.3.23"
