@@ -1,5 +1,3 @@
-mod config;
-
 mod app;
 mod history_manager;
 

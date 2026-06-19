@@ -7,12 +7,11 @@ use std::{
     time::Instant,
 };
 
+use common::config::{FileHandlingConfig, HistoryConfig};
 use chrono::Local;
 use crossbeam_channel::{Receiver, select};
 use serde::{Deserialize, Serialize};
 use tracing::{error, trace};
-
-use crate::config::{FileHandlingConfig, HistoryConfig};
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct FileEventInfo {

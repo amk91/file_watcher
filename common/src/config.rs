@@ -1,7 +1,5 @@
 use std::{
-    fs::{self, File},
-    path::{Path, PathBuf},
-    time::Duration,
+    fs::{self, File}, path::{Path, PathBuf}, time::Duration
 };
 
 use serde::{Deserialize, Serialize};
@@ -45,12 +43,7 @@ impl ::std::default::Default for Config {
         Self {
             file_handling_config: FileHandlingConfig {
                 part_temp_file_check: true,
-                folder_monitors: vec![FolderMonitor {
-                    enabled: true,
-                    extensions: vec!["3mf".into(), "stl".into()],
-                    source_folder: "/home/amk319/Downloads/".into(),
-                    destination_folder: "/home/amk319/Documents/3dp-files/".into(),
-                }],
+                folder_monitors: vec![],
                 move_attempts: 5u8,
                 check_interval: Duration::from_millis(1000),
                 file_timeout: Duration::from_millis(5000),

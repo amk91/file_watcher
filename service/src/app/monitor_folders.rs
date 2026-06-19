@@ -3,13 +3,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use common::config::FileHandlingConfig;
 use crossbeam_channel::{Receiver, Sender, select, unbounded};
 use notify::{Event, EventKind, INotifyWatcher, RecursiveMode, Watcher, event::CreateKind};
 use tracing::{error, warn};
 
 use crate::{
     app::App,
-    config::FileHandlingConfig,
     history_manager::{EventType, FileEventInfo},
 };
 

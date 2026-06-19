@@ -67,6 +67,11 @@ dependencies = [
 [[package]]
 name = "common"
 version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tracing",
+]
 
 [[package]]
 name = "core-foundation-sys"

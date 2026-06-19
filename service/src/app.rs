@@ -4,17 +4,18 @@ use std::{
     thread,
 };
 
-use common::APP_NAME;
+use common::{
+    APP_NAME,
+    config::{CONFIG_FILENAME, Config, FileHandlingConfig, HistoryConfig},
+};
+
 use crossbeam_channel::unbounded;
 use directories::ProjectDirs;
 use tracing::{Level, error, level_filters::LevelFilter, trace};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{layer::SubscriberExt, prelude::*, util::SubscriberInitExt};
 
-use crate::{
-    config::{CONFIG_FILENAME, Config, FileHandlingConfig, HistoryConfig},
-    history_manager::HistoryManager,
-};
+use crate::history_manager::HistoryManager;
 
 mod handle_files;
 mod monitor_config;

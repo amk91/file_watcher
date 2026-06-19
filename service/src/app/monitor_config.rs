@@ -6,6 +6,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use common::config::{Config, FileHandlingConfig, HistoryConfig};
 use crossbeam_channel::{Sender, unbounded};
 use notify::{
     Event, EventKind, INotifyWatcher, RecursiveMode, Watcher,
@@ -16,7 +17,6 @@ use tracing::{error, info, warn};
 
 use crate::{
     app::App,
-    config::{Config, FileHandlingConfig, HistoryConfig},
     history_manager::{ConfigUpdatedType, EventType},
 };
 

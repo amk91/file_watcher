@@ -5,13 +5,13 @@ use std::{
     time::{Duration, Instant},
 };
 
+use common::config::FileHandlingConfig;
 use anyhow::anyhow;
 use crossbeam_channel::{Receiver, Sender, select};
 use tracing::{error, info, trace, warn};
 
 use crate::{
     app::App,
-    config::FileHandlingConfig,
     history_manager::{EventType, FileEventInfo},
 };
 
