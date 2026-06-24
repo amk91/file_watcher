@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::anyhow;
-use common::config::file_handling_config::{FileHandlingConfig, FileOperationaType};
+use common::config::file_handling_config::{FileHandlingConfig, FileOperationType};
 use crossbeam_channel::{Receiver, Sender, select};
 use tracing::{error, info, trace, warn};
 
@@ -17,7 +17,7 @@ use crate::{
 
 #[derive(Debug)]
 struct MovingInfo {
-    pub file_operation_type: FileOperationaType,
+    pub file_operation_type: FileOperationType,
     pub timeout: Duration,
     pub attempts: u8,
     pub source_folder: String,
@@ -142,18 +142,18 @@ impl App {
     fn handle_file(
         files_list: &mut HashMap<PathBuf, MovingInfo>,
         filename: &mut PathBuf,
-        file_operation_type: FileOperationaType,
+        file_operation_type: FileOperationType,
         tx_event: &Sender<EventType>,
     ) {
         let mut remove = false;
         if let Some(moving_info) = files_list.get_mut(filename) {
             let handle_result = match file_operation_type {
-                FileOperationaType::Move => App::move_file(
+                FileOperationType::Move => App::move_file(
                     &filename,
                     &moving_info.source_folder,
                     &moving_info.destination_folder,
                 ),
-                FileOperationaType::Copy => App::copy_file(
+                FileOperationType::Copy => App::copy_file(
                     &filename,
                     &moving_info.source_folder,
                     &moving_info.destination_folder,

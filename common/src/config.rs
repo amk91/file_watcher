@@ -10,16 +10,26 @@ use tracing::{error, trace, warn};
 pub mod file_handling_config;
 use file_handling_config::FileHandlingConfig;
 
-use crate::config::file_handling_config::FolderMonitor;
-
 pub const CONFIG_FILENAME: &str = "config.json";
 pub const HISTORY_FILENAME: &str = "history.json";
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct HistoryConfig {
     pub filepath: PathBuf,
+    #[serde(default = "HistoryConfig::max_size_mb_default")]
     pub max_size_mb: usize,
+    #[serde(default = "HistoryConfig::flush_interval_default")]
     pub flush_interval: Duration,
+}
+
+impl HistoryConfig {
+    fn max_size_mb_default() -> usize {
+        5
+    }
+
+    fn flush_interval_default() -> Duration {
+        Duration::from_secs(1)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
