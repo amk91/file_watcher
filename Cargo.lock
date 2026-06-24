@@ -502,6 +502,9 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
+ "tracing-appender",
+ "tracing-journald",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1163,8 +1166,12 @@ dependencies = [
 name = "gui"
 version = "0.1.0"
 dependencies = [
+ "common",
  "iced",
+ "serde",
+ "serde_json",
  "tracing",
+ "tracing-appender",
  "tracing-subscriber",
 ]
 
