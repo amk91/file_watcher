@@ -1,27 +1,19 @@
 use std::{
-    fs::{self, File}, path::{Path, PathBuf}, time::Duration
+    fs::{self, File},
+    path::{Path, PathBuf},
+    time::Duration,
 };
 
 use serde::{Deserialize, Serialize};
 use tracing::{error, trace, warn};
 
+pub mod file_handling_config;
+use file_handling_config::FileHandlingConfig;
+
+use crate::config::file_handling_config::FolderMonitor;
+
 pub const CONFIG_FILENAME: &str = "config.json";
 pub const HISTORY_FILENAME: &str = "history.json";
-
-#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
-pub struct Config {
-    pub file_handling_config: FileHandlingConfig,
-    pub history_config: HistoryConfig,
-}
-
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
-pub struct FileHandlingConfig {
-    pub part_temp_file_check: bool,
-    pub folder_monitors: Vec<FolderMonitor>,
-    pub move_attempts: u8,
-    pub check_interval: Duration,
-    pub file_timeout: Duration,
-}
 
 #[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
 pub struct HistoryConfig {
@@ -30,12 +22,10 @@ pub struct HistoryConfig {
     pub flush_interval: Duration,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default, PartialEq, Clone)]
-pub struct FolderMonitor {
-    pub enabled: bool,
-    pub extensions: Vec<String>,
-    pub source_folder: String,
-    pub destination_folder: String,
+#[derive(Serialize, Deserialize, Debug, PartialEq, Clone)]
+pub struct Config {
+    pub file_handling_config: FileHandlingConfig,
+    pub history_config: HistoryConfig,
 }
 
 impl ::std::default::Default for Config {
@@ -60,19 +50,28 @@ impl ::std::default::Default for Config {
 impl Config {
     pub fn init(config_path: &Path, config_dir: &Path, data_dir: &PathBuf) -> Self {
         fs::create_dir_all(config_dir).unwrap_or_else(|err| {
-            panic!("Unable to generate app config folder at {}: {err}", config_dir.display());
+            panic!(
+                "Unable to generate app config folder at {}: {err}",
+                config_dir.display()
+            );
         });
 
         let create_config_file = || {
             if let Err(err) = File::create_new(&config_path) {
-                panic!("Unable to generate config file at {}: {err}", config_path.display());
+                panic!(
+                    "Unable to generate config file at {}: {err}",
+                    config_path.display()
+                );
             }
         };
 
         let backup_and_recreate = || {
             let backup_path = config_path.with_extension("json.bak");
             fs::rename(config_path, &backup_path).unwrap_or_else(|err| {
-                panic!("Unable to rename config file at {}: {err}", config_path.display());
+                panic!(
+                    "Unable to rename config file at {}: {err}",
+                    config_path.display()
+                );
             });
             create_config_file();
         };
@@ -82,18 +81,22 @@ impl Config {
             Config::default()
         } else {
             match fs::read_to_string(config_path) {
-                Ok(buffer) => {
-                    match serde_json::from_str::<Config>(&buffer) {
-                        Ok(parsed_config) => parsed_config,
-                        Err(err) => {
-                            warn!("Unable to parse config file at {}: {err}", config_path.display());
-                            backup_and_recreate();
-                            Config::default()
-                        }
+                Ok(buffer) => match serde_json::from_str::<Config>(&buffer) {
+                    Ok(parsed_config) => parsed_config,
+                    Err(err) => {
+                        warn!(
+                            "Unable to parse config file at {}: {err}",
+                            config_path.display()
+                        );
+                        backup_and_recreate();
+                        Config::default()
                     }
-                }
+                },
                 Err(err) => {
-                    warn!("Unable to read config file at {}: {err}", config_path.display());
+                    warn!(
+                        "Unable to read config file at {}: {err}",
+                        config_path.display()
+                    );
                     backup_and_recreate();
                     Config::default()
                 }
@@ -131,9 +134,11 @@ impl Config {
         config.check_for_duplicate_monitors();
 
         match serde_json::to_string_pretty(&config) {
-            Ok(config_string) => if let Err(err) = fs::write(config_path, config_string) {
-                error!(?err, "Unable to write config to file");
-            },
+            Ok(config_string) => {
+                if let Err(err) = fs::write(config_path, config_string) {
+                    error!(?err, "Unable to write config to file");
+                }
+            }
             Err(err) => error!(?err, "Unable to parse configuration as json file"),
         }
 

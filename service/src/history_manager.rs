@@ -7,7 +7,7 @@ use std::{
     time::Instant,
 };
 
-use common::config::{FileHandlingConfig, HistoryConfig};
+use common::config::{file_handling_config::FileHandlingConfig, HistoryConfig};
 use chrono::Local;
 use crossbeam_channel::{Receiver, select};
 use serde::{Deserialize, Serialize};

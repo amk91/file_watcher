@@ -5,8 +5,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use common::config::FileHandlingConfig;
 use anyhow::anyhow;
+use common::config::file_handling_config::{FileHandlingConfig, FileOperationaType};
 use crossbeam_channel::{Receiver, Sender, select};
 use tracing::{error, info, trace, warn};
 
@@ -17,6 +17,7 @@ use crate::{
 
 #[derive(Debug)]
 struct MovingInfo {
+    pub file_operation_type: FileOperationaType,
     pub timeout: Duration,
     pub attempts: u8,
     pub source_folder: String,
@@ -49,11 +50,11 @@ impl App {
                 }
 
                 recv(crossbeam_channel::after(time_to_next_check)) -> _ => {
-                    let mut files_to_move = vec![];
+                    let mut files_to_handle = vec![];
                     for (filename, moving_info) in files_list.iter_mut() {
                         moving_info.timeout = moving_info.timeout.saturating_sub(check_interval);
                         if moving_info.timeout == Duration::ZERO {
-                            files_to_move.push(filename.clone());
+                            files_to_handle.push((filename.clone(), moving_info.file_operation_type.clone()));
                             info!(
                                 "Safety timeout for {} triggered, file is flagged for removal",
                                 filename.display()
@@ -61,8 +62,8 @@ impl App {
                         }
                     }
 
-                    for filename in &mut files_to_move {
-                        App::handle_file(&mut files_list, filename, &tx_event);
+                    for (filename, file_operation_type) in &mut files_to_handle {
+                        App::handle_file(&mut files_list, filename, file_operation_type.clone(), &tx_event);
                     }
 
                     next_check = Instant::now() + check_interval;
@@ -123,6 +124,7 @@ impl App {
                         files_list.insert(
                             filename,
                             MovingInfo {
+                                file_operation_type: folder_monitor.file_operation_type.clone(),
                                 timeout: config.file_timeout,
                                 attempts: config.move_attempts,
                                 source_folder: folder_monitor.source_folder.clone(),
@@ -140,20 +142,31 @@ impl App {
     fn handle_file(
         files_list: &mut HashMap<PathBuf, MovingInfo>,
         filename: &mut PathBuf,
+        file_operation_type: FileOperationaType,
         tx_event: &Sender<EventType>,
     ) {
         let mut remove = false;
         if let Some(moving_info) = files_list.get_mut(filename) {
-            match App::move_file(
-                &filename,
-                &moving_info.source_folder,
-                &moving_info.destination_folder,
-            ) {
+            let handle_result = match file_operation_type {
+                FileOperationaType::Move => App::move_file(
+                    &filename,
+                    &moving_info.source_folder,
+                    &moving_info.destination_folder,
+                ),
+                FileOperationaType::Copy => App::copy_file(
+                    &filename,
+                    &moving_info.source_folder,
+                    &moving_info.destination_folder,
+                ),
+            };
+
+            match handle_result {
                 Ok(_) => {
                     remove = true;
                     info!(
-                        "File {} moved successfully and removed from list",
-                        filename.display()
+                        "File {} handled ({}) successfully and removed from list",
+                        filename.display(),
+                        moving_info.file_operation_type,
                     );
 
                     if let Err(err) = tx_event.send(EventType::FileMoved(FileEventInfo {
@@ -169,7 +182,8 @@ impl App {
                         remove = true;
                         warn!(
                             ?err,
-                            "Unable to move {} from {} to {}",
+                            "Unable to handle ({}) {} from {} to {}",
+                            moving_info.file_operation_type,
                             filename.display(),
                             moving_info.source_folder,
                             moving_info.destination_folder
@@ -186,11 +200,11 @@ impl App {
         }
     }
 
-    fn move_file(
+    fn check_paths_before_handling(
         filename: &PathBuf,
         source_folder: &String,
         destination_folder: &String,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(PathBuf, PathBuf), anyhow::Error> {
         let destination_filepath = Path::new(&destination_folder).join(filename);
         if std::fs::exists(&destination_filepath)? {
             return Err(anyhow!(
@@ -202,6 +216,20 @@ impl App {
         if !std::fs::exists(&source_filepath)? {
             return Err(anyhow!("Source file {source_filepath:#?} not found"));
         }
+
+        Ok((source_filepath, destination_filepath))
+    }
+
+    fn move_file(
+        filename: &PathBuf,
+        source_folder: &String,
+        destination_folder: &String,
+    ) -> Result<(), anyhow::Error> {
+        let (source_filepath, destination_filepath) =
+            match App::check_paths_before_handling(filename, source_folder, destination_folder) {
+                Ok(paths) => paths,
+                Err(err) => return Err(err),
+            };
 
         match std::fs::rename(&source_filepath, &destination_filepath) {
             Ok(_) => {
@@ -220,7 +248,37 @@ impl App {
                     .map_err(|err| anyhow!("Unable to remove file {source_filepath:#?}: {err:#?}"))
             }
             Err(err) => Err(anyhow!(
-                "Unable to rename file from {source_filepath:#?} to {destination_filepath:#?}, {err:#?}"
+                "Unable to rename file from {} to {}, {err:#?}",
+                source_filepath.display(),
+                destination_filepath.display()
+            )),
+        }
+    }
+
+    fn copy_file(
+        filename: &PathBuf,
+        source_folder: &String,
+        destination_folder: &String,
+    ) -> Result<(), anyhow::Error> {
+        let (source_filepath, destination_filepath) =
+            match App::check_paths_before_handling(filename, source_folder, destination_folder) {
+                Ok(paths) => paths,
+                Err(err) => return Err(err),
+            };
+
+        match std::fs::copy(&source_filepath, &destination_filepath) {
+            Ok(_) => {
+                info!(
+                    "File {} successfully copied to {}",
+                    source_filepath.display(),
+                    destination_filepath.display(),
+                );
+                Ok(())
+            }
+            Err(err) => Err(anyhow!(
+                "Unable to copy file from {} to {}, {err}",
+                source_filepath.display(),
+                destination_filepath.display()
             )),
         }
     }

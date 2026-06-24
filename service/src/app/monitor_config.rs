@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use common::config::{Config, FileHandlingConfig, HistoryConfig};
+use common::config::{Config, HistoryConfig, file_handling_config::FileHandlingConfig};
 use crossbeam_channel::{Sender, unbounded};
 use notify::{
     Event, EventKind, INotifyWatcher, RecursiveMode, Watcher,

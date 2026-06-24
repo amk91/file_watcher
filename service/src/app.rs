@@ -5,14 +5,13 @@ use std::{
 };
 
 use common::{
-    config::{Config, FileHandlingConfig, HistoryConfig},
     app_paths::AppPaths,
+    config::{Config, HistoryConfig, file_handling_config::FileHandlingConfig},
 };
 
 use crossbeam_channel::unbounded;
-use tracing::{Level, error, level_filters::LevelFilter, trace};
+use tracing::{error, trace};
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::{layer::SubscriberExt, prelude::*, util::SubscriberInitExt};
 
 use crate::history_manager::HistoryManager;
 

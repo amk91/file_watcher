@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use common::config::FileHandlingConfig;
+use common::config::file_handling_config::FileHandlingConfig;
 use crossbeam_channel::{Receiver, Sender, select, unbounded};
 use notify::{Event, EventKind, INotifyWatcher, RecursiveMode, Watcher, event::CreateKind};
 use tracing::{error, warn};
